@@ -17,10 +17,17 @@ import androidx.core.app.ActivityCompat
 import androidx.fragment.app.Fragment
 import com.example.laventana.R
 import com.example.laventana.model.Lista
+import com.example.laventana.model.Proyecto
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import mx.tec.a2doexamen.utility.AppDatabase
 
 class Map: Fragment(), LocationListener {
     lateinit var mapa: GoogleMap
@@ -29,6 +36,9 @@ class Map: Fragment(), LocationListener {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         super.onCreateView(inflater, container, savedInstanceState)
         val view: View = inflater.inflate(R.layout.fragment_map, container, false)
+
+        val db = AppDatabase.getInstance(this.requireContext()) // Inicializar base de datos
+        val list = mutableListOf<Proyecto>()
 
         var mapFragment = childFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
 
@@ -46,25 +56,6 @@ class Map: Fragment(), LocationListener {
             longitud = sharedPreferences.getString("longitud", "Longitud")?.toDouble() ?: 0.0
         }
 
-        mapFragment.getMapAsync { googleMap ->
-            mapa = googleMap
-            mapa.isMyLocationEnabled = true // Para mostrar el punto azul de la ubicación del usuario
-            // Controles zoom
-            mapa.uiSettings.isZoomControlsEnabled = true // Para mostrar los controles de zoom
-
-            // Agregar marcadores
-            for (i in Lista.lista) {
-                mapa.addMarker(i.getMarker())
-            }
-
-            // Mover la camara a mexico
-            mapa.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(23.634501, -102.552784), 5f))
-
-            // Mover la cámara a la ubicación del lugar
-            if (latitud != 0.0 && longitud != 0.0) {
-                mapa.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(latitud, longitud), 15f))
-            }
-        }
         // Solicitar permiso de ubicación
         if (ActivityCompat.checkSelfPermission(
                 this.requireActivity(),
@@ -99,12 +90,44 @@ class Map: Fragment(), LocationListener {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0f, this)
         }
 
+        mapFragment.getMapAsync { googleMap ->
+            mapa = googleMap
+            mapa.isMyLocationEnabled = true // Para mostrar el punto azul de la ubicación del usuario
+            // Controles zoom
+            mapa.uiSettings.isZoomControlsEnabled = true // Para mostrar los controles de zoom
+
+            addMarker(db, list)
+            mapa.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(23.634501, -102.552784), 5f))
+            sharedPreferences.edit().putString("latitud", 0.1.toString()).apply()
+            sharedPreferences.edit().putString("longitud", 0.1.toString()).apply()
+
+            // Mover la cámara a la ubicación del lugar
+            if (latitud != 0.1 && longitud != 0.1 && latitud != 0.0 && longitud != 0.0) {
+                mapa.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(latitud, longitud), 15f))
+            }
+        }
+
+
         return view
     }
 
+
     override fun onLocationChanged(location: Location) {
         //Log.d("Map", "Latitud: ${location.latitude} Longitud: ${location.longitude}")
+    }
 
+    @OptIn(DelicateCoroutinesApi::class)
+    fun addMarker(db : AppDatabase, lista : MutableList<Proyecto>) {
+        GlobalScope.launch(Dispatchers.IO) {
+            val list = db.proyectoDao().obtenerProyectos()
+            lista.addAll(list)
+
+            withContext(Dispatchers.Main){
+                for (i in lista) {
+                    mapa.addMarker(i.getMarker())
+                }
+            }
+        }
     }
 
 }
